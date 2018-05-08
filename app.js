@@ -8,10 +8,11 @@ var GAME_WIDTH = 640;
 var PLANE_SEGMENT = 25;
 var LEVEL_HEIGHT = 4;
 
+var PLANETYPE_DAMAGE = 502;
 var PLANETYPE_BLOCK = 501;
 var PLANETYPE_EMPTY = 500;
 
-var debugMode = true;
+var debugMode = false;
 
 /**
  * liner lerp
@@ -19,9 +20,8 @@ var debugMode = true;
  * @param {number} end 
  * @param {number} persent - [0,1]
  */
-var lerpself = function(start,end,persent){
-    return start+(end-start)*persent;
-}
+var lerpself = (start,end,persent) => start+(end-start)*persent;//I love Lambda!
+var $ = (_) => document.getElementById(_);
 /**
  * initialize
  */
@@ -81,9 +81,21 @@ var debug_initBaseLine = function(){
 };
 
 //game Objects
-var planeGenerator = function(start,length){// [0,PLANE_SEGMENT)
-    
-    var plane_g = new THREE.CylinderGeometry(2,2,0.5,PLANE_SEGMENT,1,false,2*Math.PI/PLANE_SEGMENT*start,2*Math.PI/PLANE_SEGMENT*length);
+var planeGenerator = function(start,length,type){// [0,PLANE_SEGMENT)
+    var plane_g = new THREE.CylinderGeometry(
+        2,//radiusTop
+        2,//radiusButtom
+        0.5,//height
+        PLANE_SEGMENT,//radial segments
+        1,//height segments
+        false,//open ended
+        2*Math.PI/PLANE_SEGMENT*start,//theta start
+        2*Math.PI/PLANE_SEGMENT*length//theta length
+    );
+                                                //todo
+                                                // -  build switch-case for diffrent type blocks
+                                                // -  create emit object aside
+                                                // -  change alpha to 0.5 or lower for seeking next-level objects
     var plane_m = new THREE.MeshLambertMaterial({color:new THREE.Color(0x666666),side: THREE.DoubleSide});
     var plane = new THREE.Mesh(plane_g,plane_m);
     plane.receiveShadow = true;
@@ -131,7 +143,8 @@ renderer.domElement.addEventListener("mouseup",function(e){
  * setting
  */
 var levels = [];
-var planeBuffer = [];
+
+var userScore = 0;
 
 var level_Current = 0;
 var ballSpeed = 0;//ingame
@@ -139,9 +152,10 @@ var ballMaxSpeed = 12;//ingame
 var ballMaxFallSpeed = 20;//ingame
 var ballAccurate = 30;//ingame
 var ballDeepestY = 0;//ingame
-
+var ballConstantPass = 0;
 var Level = function(diff){
-    this.planeBuffer = [];
+
+    //build level list                                                                      //create DAMEGE block by diff here
     var li = new Array(PLANE_SEGMENT);
     for(var fill = 0;fill<PLANE_SEGMENT;fill++){
         li [fill] = PLANETYPE_BLOCK;
@@ -151,16 +165,46 @@ var Level = function(diff){
     for(var i = empty;i<empty+emptyL;i++)
         li[i<PLANE_SEGMENT?i:i-PLANE_SEGMENT] = PLANETYPE_EMPTY;
     this.li = li;
+
+    //build
+    this.planeBuffer = [];
+    var cur = 0;
+    var cur_start = 0;
+    var cur_end = 0;
+    var generateType = PLANETYPE_EMPTY;
+    while( cur<PLANE_SEGMENT){
+        if(this.li[cur]!=this.li[cur+1]){
+            cur_end = cur;
+            //generate
+            switch(this.li[cur]){
+                case PLANETYPE_BLOCK:
+                    var im = this.planeBuffer.push( planeGenerator(cur_start,cur_end-cur_start+1,PLANETYPE_BLOCK));
+                    scene.add(this.planeBuffer[im-1]);
+                    this.planeBuffer[im-1].position.set(0,-LEVEL_HEIGHT*diff,0);
+            }
+            //push cur
+            cur_start = cur+1;
+        }
+        cur++;
+    }
 };
 var ballCollider = function(){
     var position = Math.floor(angelar/(Math.PI *2 /PLANE_SEGMENT));
     switch(levels[level_Current].li[position]){
     case PLANETYPE_BLOCK:
         ballSpeed = -ballMaxSpeed;
+        ballConstantPass = 0;
         break;
+    case PLANETYPE_DAMAGE:
+                                                                                        //game end function
+        ballSpeed = 0;
+        break
     case PLANETYPE_EMPTY:
         level_Current++;
         levelEmit();
+        ballConstantPass++;
+        userScore+=ballConstantPass;
+        $("score").innerHTML = userScore;
         break;
     }
 }
@@ -191,25 +235,6 @@ var levelEmit = function(){
                 //    else levels[level_Current+inx].li[i] = PLANETYPE_EMPTY;
                 //}
                 //module generate
-                var cur = 0;
-                var cur_start = 0;
-                var cur_end = 0;
-                var generateType = PLANETYPE_EMPTY;
-                while( cur<PLANE_SEGMENT){
-                    if(levels[level_Current+inx].li[cur]!=levels[level_Current+inx].li[cur+1]){
-                        cur_end = cur;
-                        //generate
-                        switch(levels[level_Current+inx].li[cur]){
-                            case PLANETYPE_BLOCK:
-                                var im = levels[level_Current+inx].planeBuffer.push( planeGenerator(cur_start,cur_end-cur_start+1));
-                                scene.add(levels[level_Current+inx].planeBuffer[im-1]);
-                                levels[level_Current+inx].planeBuffer[im-1].position.set(0,-LEVEL_HEIGHT*(level_Current+inx),0);
-                        }
-                        //push cur
-                        cur_start = cur+1;
-                    }
-                    cur++;
-                }
             }
         }
     }
