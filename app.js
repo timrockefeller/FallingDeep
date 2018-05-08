@@ -6,11 +6,22 @@ var GAME_HEIGHT = 640;
 var GAME_WIDTH = 640;
 
 var PLANE_SEGMENT = 25;
+var LEVEL_HEIGHT = 4;
 
 var PLANETYPE_BLOCK = 501;
 var PLANETYPE_EMPTY = 500;
 
 var debugMode = true;
+
+/**
+ * liner lerp
+ * @param {number} start 
+ * @param {number} end 
+ * @param {number} persent - [0,1]
+ */
+var lerpself = function(start,end,persent){
+    return start+(end-start)*persent;
+}
 /**
  * initialize
  */
@@ -70,12 +81,13 @@ var debug_initBaseLine = function(){
 };
 
 //game Objects
-var planeGenerator = function(start,end){// [0,PLANE_SEGMENT)
+var planeGenerator = function(start,length){// [0,PLANE_SEGMENT)
     
-    var plane_g = new THREE.CylinderGeometry(2,2,0.5,PLANE_SEGMENT,1,false,2*Math.PI/PLANE_SEGMENT*start,2*Math.PI/PLANE_SEGMENT*end);
+    var plane_g = new THREE.CylinderGeometry(2,2,0.5,PLANE_SEGMENT,1,false,2*Math.PI/PLANE_SEGMENT*start,2*Math.PI/PLANE_SEGMENT*length);
     var plane_m = new THREE.MeshLambertMaterial({color:new THREE.Color(0x666666),side: THREE.DoubleSide});
     var plane = new THREE.Mesh(plane_g,plane_m);
     plane.receiveShadow = true;
+    plane.rotation.y = 2*Math.PI/PLANE_SEGMENT*start;
     return plane;
 };
 
@@ -104,7 +116,11 @@ renderer.domElement.addEventListener("mousedown",function(e){
 });
 renderer.domElement.addEventListener("mousemove",function(e){
     if(mouseDown){
-        angelar = angelar_t + (e.clientX - mouseXp)/64;
+        angelar = angelar_t - (e.clientX - mouseXp)/64;
+        if(angelar>Math.PI*2)
+            angelar-=Math.PI*2;
+        if(angelar<0)
+            angelar+=Math.PI*2;
     }
 });
 renderer.domElement.addEventListener("mouseup",function(e){
@@ -118,16 +134,24 @@ var levels = [];
 var planeBuffer = [];
 
 var level_Current = 0;
-var level_Passed = -1;
 var ballSpeed = 0;//ingame
 var ballMaxSpeed = 10;//ingame
 var ballAccurate = 20;//ingame
 
-var planeManager = {
-
+var Level = function(diff){
+    this.planeBuffer = [];
+    var li = new Array(PLANE_SEGMENT);
+    for(var fill = 0;fill<PLANE_SEGMENT;fill++){
+        li [fill] = PLANETYPE_BLOCK;
+    }
+    var empty = Math.floor(Math.random()*PLANE_SEGMENT);
+    var emptyL = 5;
+    for(var i = empty;i<PLANE_SEGMENT+((empty+emptyL)-PLANE_SEGMENT>0?(empty+emptyL)-PLANE_SEGMENT:0);i++)
+        li[i<PLANE_SEGMENT?i:i-PLANE_SEGMENT] = PLANETYPE_EMPTY;
+    this.li = li;
 };
 var ballCollider = function(){
-    var position =angelar/(Math.PI *2 /PLANE_SEGMENT);
+    var position =Math.floor(angelar/(Math.PI *2 /PLANE_SEGMENT));
     
     if(levels[level_Current].li[position] == PLANETYPE_BLOCK){
         ballSpeed = -ballMaxSpeed;
@@ -137,18 +161,29 @@ var ballCollider = function(){
     }
 }
 var levelEmit = function(){
+    //remove level
+    for (var passed_level = 0; passed_level<level_Current-1;passed_level++){
+        //
+        for ( var passed_part in levels[passed_level].planeBuffer){
+            //animate?
+            scene.remove(levels[passed_level].planeBuffer[passed_part]);
+        }
+    }
+
     var Forword_Num = 10;
     if(!(levels[level_Current]&&levels[level_Current+10])){
         for (var inx = 0;inx<Forword_Num;inx++){
             if(!levels[level_Current+inx]){
                 //level generate
-                levels[level_Current+inx] = {li:new Array(PLANE_SEGMENT),
-                                             planeBuffer:new Array()};
-                var blocknum = Math.floor(Math.random()*PLANE_SEGMENT);
-                for (var i = 0;i<PLANE_SEGMENT;i++){
-                    if(i<blocknum)levels[level_Current+inx].li[i] = PLANETYPE_BLOCK;
-                    else levels[level_Current+inx].li[i] = PLANETYPE_EMPTY;
-                }
+                levels[level_Current+inx] = new Level(level_Current+inx);
+                //{li:new Array(PLANE_SEGMENT),
+                //                             planeBuffer:new Array()};
+                //var blocknum = Math.floor(Math.random()*PLANE_SEGMENT);
+                //for (var i = 0;i<PLANE_SEGMENT;i++){
+                //    if(i<blocknum)levels[level_Current+inx].li[i] = PLANETYPE_BLOCK;
+                //    else levels[level_Current+inx].li[i] = PLANETYPE_EMPTY;
+                //}
+                //module generate
                 var cur = 0;
                 var cur_start = 0;
                 var cur_end = 0;
@@ -159,8 +194,9 @@ var levelEmit = function(){
                         //generate
                         switch(levels[level_Current+inx].li[cur]){
                             case PLANETYPE_BLOCK:
-                                var im = levels[level_Current+inx].planeBuffer.push( planeGenerator(cur_start,cur_end));
-                                scene.add(levels[level_Current+inx].planeBuffer[im]);
+                                var im = levels[level_Current+inx].planeBuffer.push( planeGenerator(cur_start,cur_end-cur_start+1));
+                                scene.add(levels[level_Current+inx].planeBuffer[im-1]);
+                                levels[level_Current+inx].planeBuffer[im-1].position.set(0,-LEVEL_HEIGHT*(level_Current+inx),0);
                         }
                         //push cur
                         cur_start = cur+1;
@@ -181,16 +217,22 @@ var update = function(deltaTime){
     //plane.rotation.y=angelar;
     for (var index in levels){
         for (var pl in levels[index].planeBuffer){
-            levels[index].planeBuffer[pl].rotation.y = angelar;
+            levels[index].planeBuffer[pl].rotation.y = -angelar;
         }
     }
     /**
+     * camera lerp
+     */
+    var cmr_y = lerpself(camera.position.y-3,-level_Current*LEVEL_HEIGHT,0.04);
+    cylinder.position.set(0,cmr_y,0)
+    camera.position.set(0,cmr_y+3,5);
+    camera.lookAt(new THREE.Vector3(0,cmr_y,0));
+    /**
      * ball jumping
      */
-    if (playBall.position.y<0.25&&ballSpeed>=0){
+    if (playBall.position.y<0.25-level_Current*LEVEL_HEIGHT&&ballSpeed>=0){
         //collider
         ballCollider();
-        
     }
     //fall
     ballSpeed = Math.min(ballSpeed + ballAccurate*deltaTime, ballMaxSpeed);
