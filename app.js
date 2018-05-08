@@ -135,8 +135,10 @@ var planeBuffer = [];
 
 var level_Current = 0;
 var ballSpeed = 0;//ingame
-var ballMaxSpeed = 10;//ingame
-var ballAccurate = 20;//ingame
+var ballMaxSpeed = 12;//ingame
+var ballMaxFallSpeed = 20;//ingame
+var ballAccurate = 30;//ingame
+var ballDeepestY = 0;//ingame
 
 var Level = function(diff){
     this.planeBuffer = [];
@@ -146,27 +148,32 @@ var Level = function(diff){
     }
     var empty = Math.floor(Math.random()*PLANE_SEGMENT);
     var emptyL = 5;
-    for(var i = empty;i<PLANE_SEGMENT+((empty+emptyL)-PLANE_SEGMENT>0?(empty+emptyL)-PLANE_SEGMENT:0);i++)
+    for(var i = empty;i<empty+emptyL;i++)
         li[i<PLANE_SEGMENT?i:i-PLANE_SEGMENT] = PLANETYPE_EMPTY;
     this.li = li;
 };
 var ballCollider = function(){
-    var position =Math.floor(angelar/(Math.PI *2 /PLANE_SEGMENT));
-    
-    if(levels[level_Current].li[position] == PLANETYPE_BLOCK){
+    var position = Math.floor(angelar/(Math.PI *2 /PLANE_SEGMENT));
+    switch(levels[level_Current].li[position]){
+    case PLANETYPE_BLOCK:
         ballSpeed = -ballMaxSpeed;
-    }else{
+        break;
+    case PLANETYPE_EMPTY:
         level_Current++;
         levelEmit();
+        break;
     }
 }
 var levelEmit = function(){
     //remove level
     for (var passed_level = 0; passed_level<level_Current-1;passed_level++){
         //
-        for ( var passed_part in levels[passed_level].planeBuffer){
-            //animate?
-            scene.remove(levels[passed_level].planeBuffer[passed_part]);
+        if(levels[passed_level]){
+            for ( var passed_part in levels[passed_level].planeBuffer){
+                //animate?
+                scene.remove(levels[passed_level].planeBuffer[passed_part]);
+            }
+            delete levels[passed_level];
         }
     }
 
@@ -210,6 +217,8 @@ var levelEmit = function(){
 /**
  * game updates
  */
+var tgt_y=camera.position.y-3;
+var ba;
 var update = function(deltaTime){
     /**
      * plane rotation
@@ -223,10 +232,11 @@ var update = function(deltaTime){
     /**
      * camera lerp
      */
-    var cmr_y = lerpself(camera.position.y-3,-level_Current*LEVEL_HEIGHT,0.04);
-    cylinder.position.set(0,cmr_y,0)
+    var cmr_y = lerpself(camera.position.y-3,ballDeepestY,0.06);
+    tgt_y = lerpself(tgt_y,ballDeepestY,0.08);
+    cylinder.position.set(0,cmr_y,0);
     camera.position.set(0,cmr_y+3,5);
-    camera.lookAt(new THREE.Vector3(0,cmr_y,0));
+    camera.lookAt(new THREE.Vector3(0,tgt_y,0));
     /**
      * ball jumping
      */
@@ -235,8 +245,9 @@ var update = function(deltaTime){
         ballCollider();
     }
     //fall
-    ballSpeed = Math.min(ballSpeed + ballAccurate*deltaTime, ballMaxSpeed);
+    ballSpeed = Math.min(ballSpeed + ballAccurate*deltaTime, ballMaxFallSpeed);
     playBall.position.y-=ballSpeed*deltaTime;
+    ballDeepestY = Math.min(ballDeepestY,playBall.position.y);
 };
 var render = function() {
     requestAnimationFrame(render);
