@@ -1,3 +1,4 @@
+/*global THREE*/
 /**
  * MACROs
  */
@@ -12,7 +13,7 @@ var PLANETYPE_DAMAGE = 502;
 var PLANETYPE_BLOCK = 501;
 var PLANETYPE_EMPTY = 500;
 
-var debugMode = false;
+var debugMode = true;
 
 /**
  * liner lerp
@@ -46,15 +47,16 @@ var scene = new THREE.Scene();
 
 //light
 var directionalLight;
+var ltarget = new THREE.Object3D();
 var initLight = function(){
     scene.add(new THREE.AmbientLight(0x444444));  
 
     directionalLight = new THREE.DirectionalLight( 0xffffff,1,0);
     directionalLight.position.set(1,1,1);
     directionalLight.castShadow = true;
-    
+    directionalLight.shadow.mapSize.height = 512;
     scene.add(directionalLight);
-    
+    scene.add(ltarget);
     
     if(debugMode) {
         var helper = new THREE.CameraHelper(directionalLight.shadow.camera );
@@ -86,17 +88,33 @@ var planeGenerator = function(start,length,type){// [0,PLANE_SEGMENT)
         2,//radiusTop
         2,//radiusButtom
         0.5,//height
-        PLANE_SEGMENT,//radial segments
+        
+        length,//PLANE_SEGMENT,//radial segments
         1,//height segments
         false,//open ended
         2*Math.PI/PLANE_SEGMENT*start,//theta start
         2*Math.PI/PLANE_SEGMENT*length//theta length
     );
+    //var clr = 0x666666;
+    
+    var plane_m;
+    switch (type){
+        case PLANETYPE_BLOCK:
+            plane_m = new THREE.MeshLambertMaterial({color:new THREE.Color(0x666666),side: THREE.DoubleSide});
+            break;
+        case PLANETYPE_DAMAGE:
+            plane_m = new THREE.MeshPhongMaterial({color:new THREE.Color(0xff7635),side:THREE.DoubleSide});
+            
+            //clr = 0xff7a45;
+            break;
+        default:
+            break;
+    }
                                                 //todo
                                                 // -  build switch-case for diffrent type blocks
                                                 // -  create emit object aside
                                                 // -  change alpha to 0.5 or lower for seeking next-level objects
-    var plane_m = new THREE.MeshLambertMaterial({color:new THREE.Color(0x666666),side: THREE.DoubleSide});
+    //var plane_m = new THREE.MeshLambertMaterial({color:new THREE.Color(clr),side: THREE.DoubleSide});
     var plane = new THREE.Mesh(plane_g,plane_m);
     plane.receiveShadow = true;
     plane.rotation.y = 2*Math.PI/PLANE_SEGMENT*start;
@@ -117,6 +135,9 @@ var initPlayBall = function(){
 /**
  * world control
  */
+var gaming = true;
+ 
+ 
 var angelar = 0;
 var angelar_t = 0;
 var mouseXp = 0;
@@ -127,7 +148,7 @@ renderer.domElement.addEventListener("mousedown",function(e){
     angelar_t = angelar;//optimize the angel in [0,2PI)
 });
 renderer.domElement.addEventListener("mousemove",function(e){
-    if(mouseDown){
+    if(mouseDown&&gaming){
         angelar = angelar_t - (e.clientX - mouseXp)/64;
         if(angelar>Math.PI*2)
             angelar-=Math.PI*2;
@@ -160,6 +181,8 @@ var Level = function(diff){
     for(var fill = 0;fill<PLANE_SEGMENT;fill++){
         li [fill] = PLANETYPE_BLOCK;
     }
+    for (var count = 0;count<2;count++)
+        li[Math.floor(Math.random()*PLANE_SEGMENT)] = PLANETYPE_DAMAGE;
     var empty = Math.floor(Math.random()*PLANE_SEGMENT);
     var emptyL = 5;
     for(var i = empty;i<empty+emptyL;i++)
@@ -171,16 +194,15 @@ var Level = function(diff){
     var cur = 0;
     var cur_start = 0;
     var cur_end = 0;
-    var generateType = PLANETYPE_EMPTY;
+    //var generateType = PLANETYPE_EMPTY;
     while( cur<PLANE_SEGMENT){
         if(this.li[cur]!=this.li[cur+1]){
             cur_end = cur;
             //generate
-            switch(this.li[cur]){
-                case PLANETYPE_BLOCK:
-                    var im = this.planeBuffer.push( planeGenerator(cur_start,cur_end-cur_start+1,PLANETYPE_BLOCK));
-                    scene.add(this.planeBuffer[im-1]);
-                    this.planeBuffer[im-1].position.set(0,-LEVEL_HEIGHT*diff,0);
+            if(this.li[cur]!= PLANETYPE_EMPTY){
+                var im = this.planeBuffer.push( planeGenerator(cur_start,cur_end-cur_start+1,this.li[cur]));
+                scene.add(this.planeBuffer[im-1]);
+                this.planeBuffer[im-1].position.set(0,-LEVEL_HEIGHT*diff,0);
             }
             //push cur
             cur_start = cur+1;
@@ -197,8 +219,9 @@ var ballCollider = function(){
         break;
     case PLANETYPE_DAMAGE:
                                                                                         //game end function
+        gaming = false;
         ballSpeed = 0;
-        break
+        break;
     case PLANETYPE_EMPTY:
         level_Current++;
         levelEmit();
@@ -207,6 +230,11 @@ var ballCollider = function(){
         $("score").innerHTML = userScore;
         break;
     }
+    
+    //light follow
+    directionalLight.position.set(3,-(level_Current-1)*LEVEL_HEIGHT +3,3);
+    ltarget.position.set(0,-(level_Current-1)*LEVEL_HEIGHT,0);
+    directionalLight.target = ltarget;
 }
 var levelEmit = function(){
     //remove level
@@ -227,14 +255,14 @@ var levelEmit = function(){
             if(!levels[level_Current+inx]){
                 //level generate
                 levels[level_Current+inx] = new Level(level_Current+inx);
-                //{li:new Array(PLANE_SEGMENT),
+                // {li:new Array(PLANE_SEGMENT),
                 //                             planeBuffer:new Array()};
-                //var blocknum = Math.floor(Math.random()*PLANE_SEGMENT);
-                //for (var i = 0;i<PLANE_SEGMENT;i++){
-                //    if(i<blocknum)levels[level_Current+inx].li[i] = PLANETYPE_BLOCK;
-                //    else levels[level_Current+inx].li[i] = PLANETYPE_EMPTY;
-                //}
-                //module generate
+                // var blocknum = Math.floor(Math.random()*PLANE_SEGMENT);
+                // for (var i = 0;i<PLANE_SEGMENT;i++){
+                //     if(i<blocknum)levels[level_Current+inx].li[i] = PLANETYPE_BLOCK;
+                //     else levels[level_Current+inx].li[i] = PLANETYPE_EMPTY;
+                // }
+                // module generate
             }
         }
     }
@@ -262,6 +290,9 @@ var update = function(deltaTime){
     cylinder.position.set(0,cmr_y,0);
     camera.position.set(0,cmr_y+3,5);
     camera.lookAt(new THREE.Vector3(0,tgt_y,0));
+    
+   
+    
     /**
      * ball jumping
      */
